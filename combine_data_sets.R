@@ -25,7 +25,16 @@ master_df <- pitstop_df %>%
 master_df <- master_df %>%
   left_join(circuits_df, by = "circuitId")
 
+track_type <- vroom("f1_track_types.csv")
+
+final_df <- master_df %>%
+  left_join(track_type, by="name") %>%
+  select(stop,Type)
+
 head(master_df)
 
+unique(master_df)
 
-#hi
+head(final_df)
+
+write.csv(final_df, "stop_type_df.csv", row.names = TRUE)
