@@ -1,0 +1,7 @@
+---
+title: "Final Doc"
+format: pdf
+editor: visual
+---
+
+## STAT 251 Final Project
