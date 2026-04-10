@@ -1,8 +1,174 @@
 ---
 title: "Final Doc"
+author: "Connor Anderson, Hayden Warner, Corbin Brinkerhoff"
 format: pdf
 editor: visual
 ---
+
+```{r}
+#| include: false
+
+# Poisson-Gamma Bayesian Analysis
+# Question: Do drivers take more pit stops on street circuits
+#           vs. permanent race tracks?
+# Each row = one driver in one race, with their stop count
+#            and circuit type (Street or Permanent)
+
+
+library(tidyverse)
+
+# --- Load Data ---
+df <- read.csv("stop_type_df.csv")%>%
+  filter(stop<8)
+
+unique(df$stop)
+table(df$stop)
+
+street    <- df$stop[df$Type == "Street"]
+permanent <- df$stop[df$Type == "Permanent"]
+
+cat("Street circuit races:   ", length(street), "\n")
+cat("Permanent circuit races:", length(permanent), "\n")
+cat("Street mean stops:      ", mean(street), "\n")
+cat("Permanent mean stops:   ", mean(permanent), "\n")
+
+
+
+# PRIOR ELICITATION
+# Prior belief: drivers average about 2 pit stops per race.
+# We'll say our prior is worth ~10 races of information.
+# So: a = prior_mean * b = 2 * 10 = 20, b = 10
+#
+# This is a moderately informative prior — feel free to
+# adjust a and b to reflect stronger or weaker prior beliefs.
+
+a <- 3  # shape
+b <- 2   # rate  (prior mean = a/b = 2 stops)
+
+theta_vals <- seq(0, 6, length = 1001)
+
+# Visualize the prior
+plot(theta_vals, dgamma(theta_vals, shape = a, rate = b),
+     type = 'l', col = 'purple', lwd = 2,
+     xlab = expression(theta),
+     ylab = "Density",
+     main = "Gamma Prior on Mean Pit Stops (a=3, b=2)")
+
+
+# POSTERIOR UPDATES
+# Poisson-Gamma conjugacy:
+#   Prior:     theta ~ Gamma(a, b)
+#   Likelihood: Y_i | theta ~ Poisson(theta)
+#   Posterior: theta | y ~ Gamma(a + sum(y), b + n)
+
+
+# Street Circuits
+n_s     <- length(street)
+sum_s   <- sum(street)
+astar_s <- a + sum_s
+bstar_s <- b + n_s
+
+cat("\n--- Street Circuit Posterior ---\n")
+cat("Posterior mean:    ", astar_s / bstar_s, "\n")
+cat("Posterior variance:", astar_s / bstar_s^2, "\n")
+cat("95% Credible Interval: ",
+    qgamma(c(0.025, 0.975), shape = astar_s, rate = bstar_s), "\n")
+
+
+# Permanent Circuits
+n_p     <- length(permanent)
+sum_p   <- sum(permanent)
+astar_p <- a + sum_p
+bstar_p <- b + n_p
+
+cat("\n--- Permanent Circuit Posterior ---\n")
+cat("Posterior mean:    ", astar_p / bstar_p, "\n")
+cat("Posterior variance:", astar_p / bstar_p^2, "\n")
+cat("95% Credible Interval: ",
+    qgamma(c(0.025, 0.975), shape = astar_p, rate = bstar_p), "\n")
+
+
+# VISUALIZE PRIOR VS POSTERIORS
+
+plot(theta_vals, dgamma(theta_vals, shape = a, rate = b),
+     type = 'l', col = 'gray50', lwd = 2, lty = 2,
+     xlab = expression(theta), ylab = "Density",
+     main = "Prior vs. Posterior: Mean Pit Stops by Circuit Type",
+     ylim = c(0, 15))
+
+lines(theta_vals, dgamma(theta_vals, shape = astar_s, rate = bstar_s),
+      col = 'steelblue', lwd = 2)
+
+lines(theta_vals, dgamma(theta_vals, shape = astar_p, rate = bstar_p),
+      col = 'tomato', lwd = 2)
+
+legend("topright",
+       legend = c("Prior", "Street (Posterior)", "Permanent (Posterior)"),
+       col    = c("gray50", "steelblue", "tomato"),
+       lwd    = 2, lty = c(2, 1, 1))
+
+
+# MONTE CARLO COMPARISON
+# Pr(theta_street > theta_permanent | data)
+
+set.seed(42)
+N <- 100000
+
+th_street    <- rgamma(N, shape = astar_s, rate = bstar_s)
+th_permanent <- rgamma(N, shape = astar_p, rate = bstar_p)
+
+prob_street_higher <- mean(th_street > th_permanent)
+
+cat("\n--- Monte Carlo Comparison ---\n")
+cat("Pr(theta_street > theta_permanent | data): ", prob_street_higher, "\n")
+cat("Posterior mean difference (Street - Permanent): ",
+    mean(th_street - th_permanent), "\n")
+cat("95% CI on difference: ",
+    quantile(th_street - th_permanent, c(0.025, 0.975)), "\n")
+
+
+# Histogram of the posterior difference
+hist(th_street - th_permanent,
+     breaks = 100,
+     col    = "lightblue",
+     border = "white",
+     main   = "Posterior Distribution of (theta_Street - theta_Permanent)",
+     xlab   = expression(theta[Street] - theta[Permanent]))
+
+abline(v = 0, col = "red", lwd = 2, lty = 2)
+abline(v = mean(th_street - th_permanent), col = "darkblue", lwd = 2)
+
+legend("topright",
+       legend = c("Posterior mean diff"),
+       col    = c("darkblue"),
+       lwd    = 2, lty = c(2, 1))
+
+
+
+# POSTERIOR PREDICTIVE: How many stops in a NEW race?
+
+
+# Monte Carlo posterior predictive samples
+ppred_street    <- rpois(N, th_street)
+ppred_permanent <- rpois(N, th_permanent)
+
+cat("\n--- Posterior Predictive ---\n")
+cat("Most likely stops (street):   ", as.integer(names(which.max(table(ppred_street)))), "\n")
+cat("Most likely stops (permanent):", as.integer(names(which.max(table(ppred_permanent)))), "\n")
+
+# Plot side-by-side predictive distributions
+par(mfrow = c(1, 2))
+
+plot(table(ppred_street) / N, type = 'h', col = 'steelblue', lwd = 3,
+     xlab = "Pit Stops", ylab = "Probability",
+     main = "Predictive: Street Circuit")
+
+plot(table(ppred_permanent) / N, type = 'h', col = 'tomato', lwd = 3,
+     xlab = "Pit Stops", ylab = "Probability",
+     main = "Predictive: Permanent Circuit")
+
+par(mfrow = c(1, 1))
+```
 
 ## STAT 251 Final Project
 
@@ -12,8 +178,247 @@ Research Question: Does the amount of pit stops a driver takes differ between st
 
 ## Methods
 
+We obtained our data through a data set containing statistics on all Formula 1 races from 1950 to 2024 from [https://www.kaggle.com/datasets/rohanrao/formula-1-world-championship-1950-2020?select=circuits.csv](https://www.kaggle.com/datasets/rohanrao/formula-1-world-championship-1950-2020?select=circuits.csv "https://www.kaggle.com/datasets/rohanrao/formula-1-world-championship-1950-2020?select=circuits.csv"){target="_blank" rel="noopener noreferrer" data-auth="NotApplicable" data-outlook-id="0f11f8db-d531-4bcb-a67e-2c57259c90bd" data-linkindex="0" style="border: 0px; font: inherit; margin: 0px; padding: 0px; vertical-align: baseline;"}. As we were only interested in the amount of pit stops each driver takes in a race, we filtered the data down to only the amount of pit stops per driver per race, and added a column to signify if the race was on a street circuit or race track depending on the circuit name. Formula 1 races on different tracks worldwide, some of which being permanent circuits designed for racing with others being public roads closed off for a "street race", such as the Las Vegas Strip in recent years, and we believed that there may be a difference between the two types. We also only accepted years between 2010 and 2024, as this is when ruling was implemented for a minimum of one mandatory pit stop each race. Our observational unit was each individual driver in each separate race, of which there are 11,364 data points, with values ranging from 1 pit stop to 7. We chose to use a Poisson likelihood, as pit stops are in discrete counts above 0, with a relatively constant rate over a given interval, namely one race. Lambda is the relevant parameter of this likelihood, representing the average amount of times a driver will make a pit stop during a race, which has a gamma prior distribution. For our prior distribution we chose a Gamma(3,2) for both the street circuits and permanent race tracks, as this matched our general belief that the average would be close to 1, with a tapering tail out to as large as 5. This tapering distribution closely matches our belief that the average is probably close to 1, with less and less belief that it could be higher numbers, and little to no belief that the true average could be as high as 5 or 6. The posteriors for street circuits and permanent race circuits will be compared against each other to see which type of track has a higher average pit stop rate per driver, and by how much.
+
+```{r}
+#| echo: FALSE
+
+# Visualize the prior
+
+plot(theta_vals, dgamma(theta_vals, shape = a, rate = b),
+     type = 'l', col = 'purple', lwd = 2,
+     xlab = expression(theta),
+     ylab = "Density",
+     main = "Gamma Prior on Mean Pit Stops (a=3, b=2)")
+```
+
 ## Results
+
+After performing our analysis using our gamma prior and poisson likelihood, we found the following posterior distributions.
+
+```{r}
+#| echo: false
+plot(theta_vals, dgamma(theta_vals, shape = a, rate = b),
+     type = 'l', col = 'gray50', lwd = 2, lty = 2,
+     xlab = expression(theta), ylab = "Density",
+     main = "Prior vs. Posterior: Mean Pit Stops by Circuit Type",
+     ylim = c(0, 25), xlim = c(0,3))
+
+lines(theta_vals, dgamma(theta_vals, shape = astar_s, rate = bstar_s),
+      col = 'steelblue', lwd = 2)
+
+lines(theta_vals, dgamma(theta_vals, shape = astar_p, rate = bstar_p),
+      col = 'tomato', lwd = 2)
+
+legend("topleft",
+       legend = c("Prior", "Street (Posterior)", "Permanent (Posterior)"),
+       col    = c("gray50", "steelblue", "tomato"),
+       lwd    = 2, lty = c(2, 1, 1))
+```
+
+We see that the posterior distribution for the rate of pit stops is pulled up from our prior for both street and permanent race tracks, with permanent being slightly higher. This is further confirmed by plotting the difference in their posteriors.
+
+```{r}
+#| echo: FALSE
+
+hist(th_street - th_permanent,
+     breaks = 100,
+     col    = "lightblue",
+     border = "white",
+     main   = "Posterior Distribution of (theta_Street - theta_Permanent)",
+     xlab   = expression(theta[Street] - theta[Permanent]))
+
+abline(v = 0, col = "red", lwd = 2, lty = 2)
+abline(v = mean(th_street - th_permanent), col = "darkblue", lwd = 2)
+```
+
+With our preliminary results we next looked to creating a credible interval for the difference in our two estimates with 95% probability, to see whether or not there is a substantial difference between the two.
+
+```{r}
+#| echo: FALSE
+
+cat("Posterior mean for Street: ",
+    mean(th_street), "\n")
+cat("Posterior mean for Permanent: ",
+    mean(th_permanent), "\n")
+cat("95% CI for Street: ", quantile(th_street, c(0.025,0.975)), "\n")
+cat("95% CI for Permanent: ", quantile(th_permanent, c(0.025,0.975)), "\n")
+cat("\n--- Monte Carlo Comparison ---\n")
+cat("Pr(theta_street > theta_permanent | data): ", prob_street_higher, "\n")
+cat("Posterior mean difference (Street - Permanent): ",
+    mean(th_street - th_permanent), "\n")
+cat("95% CI on difference: ",
+    quantile(th_street - th_permanent, c(0.025, 0.975)), "\n")
+```
+
+With our 95% credible interval we can confirm that there is a substantial difference between our two circuit types as the credible interval for the difference does not contain zero, with permanent race tracks expecting around 0.17 more pit stops per race than street circuits.
 
 ## Discussion
 
-#### Appendix
+With our analysis we found that permanent race tracks, on average, expect a higher rate of pit stops than street circuits albeit with a negligible difference between the two. Some potential shortcomings of our approach could be that we are assuming that the rate of pit stops is constant across the years despite changes and wear in track surfaces, different regulations impacting car and tire makeup, or the fact that we are not including other variables to predict pit stops such as tire compound, weather, or strategy. Future work could address some of these shortcomings and dive deeper into factors such as track-specific surface type.
+
+#### Appendix - R Code
+
+```{r}
+#| eval: false
+# Poisson-Gamma Bayesian Analysis
+# Question: Do drivers take more pit stops on street circuits
+#           vs. permanent race tracks?
+# Each row = one driver in one race, with their stop count
+#            and circuit type (Street or Permanent)
+
+
+library(tidyverse)
+
+# --- Load Data ---
+df <- read.csv("stop_type_df.csv")%>%
+  filter(stop<8)
+
+unique(df$stop)
+table(df$stop)
+
+street    <- df$stop[df$Type == "Street"]
+permanent <- df$stop[df$Type == "Permanent"]
+
+cat("Street circuit races:   ", length(street), "\n")
+cat("Permanent circuit races:", length(permanent), "\n")
+cat("Street mean stops:      ", mean(street), "\n")
+cat("Permanent mean stops:   ", mean(permanent), "\n")
+
+
+
+# PRIOR ELICITATION
+# Prior belief: drivers average about 2 pit stops per race.
+# We'll say our prior is worth ~10 races of information.
+# So: a = prior_mean * b = 2 * 10 = 20, b = 10
+#
+# This is a moderately informative prior — feel free to
+# adjust a and b to reflect stronger or weaker prior beliefs.
+
+a <- 3  # shape
+b <- 2   # rate  (prior mean = a/b = 2 stops)
+
+theta_vals <- seq(0, 6, length = 1001)
+
+# Visualize the prior
+plot(theta_vals, dgamma(theta_vals, shape = a, rate = b),
+     type = 'l', col = 'purple', lwd = 2,
+     xlab = expression(theta),
+     ylab = "Density",
+     main = "Gamma Prior on Mean Pit Stops (a=3, b=2)")
+
+
+# POSTERIOR UPDATES
+# Poisson-Gamma conjugacy:
+#   Prior:     theta ~ Gamma(a, b)
+#   Likelihood: Y_i | theta ~ Poisson(theta)
+#   Posterior: theta | y ~ Gamma(a + sum(y), b + n)
+
+
+# Street Circuits
+n_s     <- length(street)
+sum_s   <- sum(street)
+astar_s <- a + sum_s
+bstar_s <- b + n_s
+
+cat("\n--- Street Circuit Posterior ---\n")
+cat("Posterior mean:    ", astar_s / bstar_s, "\n")
+cat("Posterior variance:", astar_s / bstar_s^2, "\n")
+cat("95% Credible Interval: ",
+    qgamma(c(0.025, 0.975), shape = astar_s, rate = bstar_s), "\n")
+
+
+# Permanent Circuits
+n_p     <- length(permanent)
+sum_p   <- sum(permanent)
+astar_p <- a + sum_p
+bstar_p <- b + n_p
+
+cat("\n--- Permanent Circuit Posterior ---\n")
+cat("Posterior mean:    ", astar_p / bstar_p, "\n")
+cat("Posterior variance:", astar_p / bstar_p^2, "\n")
+cat("95% Credible Interval: ",
+    qgamma(c(0.025, 0.975), shape = astar_p, rate = bstar_p), "\n")
+
+
+# VISUALIZE PRIOR VS POSTERIORS
+
+plot(theta_vals, dgamma(theta_vals, shape = a, rate = b),
+     type = 'l', col = 'gray50', lwd = 2, lty = 2,
+     xlab = expression(theta), ylab = "Density",
+     main = "Prior vs. Posterior: Mean Pit Stops by Circuit Type",
+     ylim = c(0, 15))
+
+lines(theta_vals, dgamma(theta_vals, shape = astar_s, rate = bstar_s),
+      col = 'steelblue', lwd = 2)
+
+lines(theta_vals, dgamma(theta_vals, shape = astar_p, rate = bstar_p),
+      col = 'tomato', lwd = 2)
+
+legend("topright",
+       legend = c("Prior", "Street (Posterior)", "Permanent (Posterior)"),
+       col    = c("gray50", "steelblue", "tomato"),
+       lwd    = 2, lty = c(2, 1, 1))
+
+
+# MONTE CARLO COMPARISON
+# Pr(theta_street > theta_permanent | data)
+
+set.seed(42)
+N <- 100000
+
+th_street    <- rgamma(N, shape = astar_s, rate = bstar_s)
+th_permanent <- rgamma(N, shape = astar_p, rate = bstar_p)
+
+prob_street_higher <- mean(th_street > th_permanent)
+
+cat("\n--- Monte Carlo Comparison ---\n")
+cat("Pr(theta_street > theta_permanent | data): ", prob_street_higher, "\n")
+cat("Posterior mean difference (Street - Permanent): ",
+    mean(th_street - th_permanent), "\n")
+cat("95% CI on difference: ",
+    quantile(th_street - th_permanent, c(0.025, 0.975)), "\n")
+
+
+# Histogram of the posterior difference
+hist(th_street - th_permanent,
+     breaks = 100,
+     col    = "lightblue",
+     border = "white",
+     main   = "Posterior Distribution of (theta_Street - theta_Permanent)",
+     xlab   = expression(theta[Street] - theta[Permanent]))
+
+abline(v = 0, col = "red", lwd = 2, lty = 2)
+abline(v = mean(th_street - th_permanent), col = "darkblue", lwd = 2)
+
+legend("topright",
+       legend = c("Posterior mean diff"),
+       col    = c("darkblue"),
+       lwd    = 2, lty = c(2, 1))
+
+
+
+# POSTERIOR PREDICTIVE: How many stops in a NEW race?
+
+
+# Monte Carlo posterior predictive samples
+ppred_street    <- rpois(N, th_street)
+ppred_permanent <- rpois(N, th_permanent)
+
+cat("\n--- Posterior Predictive ---\n")
+cat("Most likely stops (street):   ", as.integer(names(which.max(table(ppred_street)))), "\n")
+cat("Most likely stops (permanent):", as.integer(names(which.max(table(ppred_permanent)))), "\n")
+
+# Plot side-by-side predictive distributions
+par(mfrow = c(1, 2))
+
+plot(table(ppred_street) / N, type = 'h', col = 'steelblue', lwd = 3,
+     xlab = "Pit Stops", ylab = "Probability",
+     main = "Predictive: Street Circuit")
+
+plot(table(ppred_permanent) / N, type = 'h', col = 'tomato', lwd = 3,
+     xlab = "Pit Stops", ylab = "Probability",
+     main = "Predictive: Permanent Circuit")
+
+par(mfrow = c(1, 1))
+```
