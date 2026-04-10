@@ -5,7 +5,7 @@
 #            and circuit type (Street or Permanent)
 
 
-library(ggplot2)
+library(tidyverse)
 
 # --- Load Data ---
 df <- read.csv("stop_type_df.csv")%>%

@@ -8,7 +8,7 @@ editor: visual
 
 ## Introduction
 
-Research Question: Does the amount of pit stops a driver takes differ between street circuits and permanent race tracks? Understanding the answer to this question will help pit crews recognize how much wear different surfaces put on their tires, and allow them to prepare more effectively for the volume of pit stops in a given race and the frequency with which they can expect their drivers to change their tires.
+Research Question: Does the amount of pit stops a driver takes differ between street circuits and permanent race tracks in Formula 1? Understanding the answer to this question will help teams to recognize how much wear different types of surfaces put on their tires, and allow them to prepare more effectively for the volume of pit stops in a given race and the frequency with which they can expect their drivers to change their tires.
 
 ## Methods
 
